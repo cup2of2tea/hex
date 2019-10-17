@@ -1,5 +1,5 @@
 var N = 11;
-var cellSize = 10;
+var cellSize = 20;
 var PI = Math.acos(-1);
 
 class Grid {
@@ -8,6 +8,8 @@ class Grid {
         this.coordinates = [];
         this.iaToPlay = false;
         this.grid2 = [];
+		this.computedNeighbors = {};
+		
         for (var i = 1; i <= N; i++) {
             var row = [];
             var row2 = [];
@@ -44,14 +46,14 @@ class Grid {
             var delta = this.coordinates[i].y - Math.floor(middle);
             if (this.grid[this.coordinates[i].x].length % 2 == 0) {
                 delta = (this.coordinates[i].y * 2 >= this.grid[this.coordinates[i].x].length ? this.coordinates[i].y - (middle - 1) : this.coordinates[i].y - (middle));
-                this.coordinates[i].centerY = delta * (Math.sin(PI / 2) * 2 + Math.sin(PI / 2 - PI / 3) * 2) * cellSize + 200;
+                this.coordinates[i].centerY = delta * (Math.sin(PI / 2) * 2 + Math.sin(PI / 2 - PI / 3) * 2) * cellSize + 350;
                 if (this.coordinates[i].y * 2 >= this.grid[this.coordinates[i].x].length) {
                     this.coordinates[i].centerY -= (Math.sin(PI / 2) + Math.sin(PI / 2 - PI / 3)) * cellSize;
                 } else {
                     this.coordinates[i].centerY += (Math.sin(PI / 2) + Math.sin(PI / 2 - PI / 3)) * cellSize;
                 }
             } else {
-                this.coordinates[i].centerY = 2 * delta * Math.sin(PI / 2) * cellSize + 200;
+                this.coordinates[i].centerY = 2 * delta * Math.sin(PI / 2) * cellSize + 350;
                 this.coordinates[i].centerY += (Math.sin(PI / 2 - PI / 3)) * 2 * delta * cellSize;
             }
             this.grid2[this.coordinates[i].x][this.coordinates[i].y].centerX = this.coordinates[i].centerX;
@@ -63,6 +65,10 @@ class Grid {
 
 
     neighbors(x, y) {
+		
+		if(this.computedNeighbors[x] && this.computedNeighbors[x][y]) return this.computedNeighbors[x][y];
+		if(!this.computedNeighbors[x]) this.computedNeighbors[x] = {};
+		
         var res = [];
         for (var i = -3; i <= 3; i++) {
             for (var j = -3; j <= 3; j++) {
@@ -90,6 +96,7 @@ class Grid {
                 }
             }
         }
+		this.computedNeighbors[x][y] = res;
         return res;
     }
 
@@ -97,7 +104,7 @@ class Grid {
         if (this.iaToPlay || this.ended) {
             return;
         }
-        this.iaToPlay = true;
+        
         var bestElem = { x: -1, y: -1 };
         var x = p[0];
         var y = p[1];
@@ -113,15 +120,20 @@ class Grid {
         if (bestElem.x == -1) {
             return;
         }
+		if(this.grid[bestElem.x][bestElem.y] != 0){
+			return;
+		}
         this.grid[bestElem.x][bestElem.y] = 2;
+		
+		this.iaToPlay = true;
         if (this.winner() != 0) {
             this.draw();
             this.ended = true;
             return;
         } else {
-            var x = Math.floor(Math.random() * (this.grid.length));
-            var y = Math.floor(Math.random() * (this.grid[x].length));
-            this.grid[x][y] = Math.floor(Math.random() * 1) + 1;
+            var pt = IAAlphaBeta(this,1,-1e8, 1e8,3);
+			console.log(pt);
+            this.grid[pt.x][pt.y] = 1;
             if (this.winner() != 0) {
                 this.draw();
                 this.ended = true;
@@ -149,13 +161,67 @@ class Grid {
         }
         return res;
     }
-
+	
+	initializeVisited() {
+		var visited = new Array(this.grid.length);
+        for (var i = 0; i < this.grid.length; i++) {
+            visited[i] = new Array(this.grid[i].length).fill(false);
+        }
+		return visited;
+	}
+	
+	dijkstra(x, y, costs, sideIdx) {
+		if(!this.dijkstraVisited) {
+			this.dijkstraVisited = this.initializeVisited();
+		}
+		
+		for(var i = 0; i < this.grid.length; i++) {
+			for(var j = 0; j < this.grid[i].length; j++) {
+				this.dijkstraVisited[i][j] = -1;
+			}
+		}
+		
+		var queue = new TinyQueue([],(noeud1, noeud2)=>{
+			return noeud1.d - noeud2.d;
+		});
+		queue.push({d:0,x:x,y:y});
+		this.dijkstraVisited[x][y] = 0;
+		var current = {};
+		while(queue.length){
+			current = queue.pop();
+			
+			if(current.x <= N-1 && current.y == this.grid[current.x].length-1 && sideIdx == 0){
+				break;
+			}
+			if(current.x <= N-1 && current.y == 0 && sideIdx == 1){
+				break;
+			}
+			if(current.x >= N-1 && current.y == this.grid[current.x].length-1 && sideIdx == 2){
+				break;
+			}
+			if(current.x >= N-1 && current.y == 0 && sideIdx == 3){
+				break;
+			}
+			
+			var n = this.neighbors(current.x,current.y);
+			n.forEach((newNode)=>{
+				if(this.dijkstraVisited[newNode.x][newNode.y] == -1){
+					//backtrack[newNode.x][newNode.y] = current;
+					newNode.d = current.d + costs(this.grid[newNode.x][newNode.y]);
+					this.dijkstraVisited[newNode.x][newNode.y] = newNode.d;
+					
+					queue.push(newNode);
+				}
+			});
+		}
+		if(current.d > 1e5){
+			console.log('?');
+		}
+		return current;
+	}
 
     winner() {
-        var visited = [];
-        for (var i = 0; i < this.grid.length; i++) {
-            visited.push(new Array(this.grid[i].length).fill(false));
-        }
+        var visited = this.initializeVisited();
         for (var i = 0; i < this.grid.length; i++) {
             for (var j = 0; j < this.grid[i].length; j++) {
                 if (!visited[i][j] && this.grid[i][j] != 0) {
@@ -213,8 +279,44 @@ class Grid {
                 .attr('y2', (d) => {
                     return d.centerY + Math.sin(PI / 2 + (i + 1) * (PI / 3)) * cellSize;
                 })
-                .attr('stroke', 'black')
-                .attr('stroke-width', '1px')
+                .attr('stroke', (d)=>{
+					d.special = true;
+					if(i==0){
+						if(d.y+1 == this.grid[d.x].length && d.x <= N-1){
+							return 'red';
+						} 
+					} else if(i==1) {
+						if(d.y == 0 && d.x <= N-1){
+							return 'blue';
+						} else if(d.y+1 == this.grid[d.x].length && d.x <= N-1){
+							return 'red';
+						} 
+					} else if(i==2) {
+						if(d.y == 0 && d.x <= N-1){
+							return 'blue';
+						} 
+					} else if(i==3) {
+						if(d.y == 0 && d.x >= N-1){
+							return 'red';
+						} 
+					} else if(i==4) {
+						if(d.y == 0 && d.x >= N-1){
+							return 'red';
+						} else if(d.y+1 == this.grid[d.x].length && d.x >= N-1){
+							return 'blue';
+						}
+					} else if(i==5) {
+						if(d.y+1 == this.grid[d.x].length && d.x >= N-1){
+							return 'blue';
+						}
+					}
+					d.special = false;
+					return 'black';
+				})
+                .attr('stroke-width', (d)=>{
+						if(d.special) return '2px';
+						else return '1px';
+				})
                 ;
         }
         this.container.selectAll('.circle')
@@ -233,7 +335,7 @@ class Grid {
                 return d.centerY;
             })
             .attr('r', (d) => {
-                return 5;
+                return 0.75*cellSize;
             })
             .attr('stroke', (d) => {
                 if (this.grid[d.x][d.y] == 0) {
@@ -244,6 +346,7 @@ class Grid {
                     return 'red';
                 }
             })
+			.attr('stroke-width',2)
             .attr('fill', (d) => {
                 if (this.grid[d.x][d.y] == 0) {
                     return 'none';
